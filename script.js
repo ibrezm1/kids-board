@@ -14,6 +14,10 @@
     thick: { pen: 14, eraser: 140 }
   };
 
+  // Ink colors that swap with the board theme so writing stays visible
+  const INK_BLACK = '#111827';
+  const INK_WHITE = '#f8fafc';
+
   // --- DOM Elements ---
   const canvas = document.getElementById('whiteboard');
   const ctx = canvas.getContext('2d');
@@ -32,6 +36,7 @@
   const btnUpload = document.getElementById('btn-upload');
   const btnDownload = document.getElementById('btn-download');
   const btnFullscreen = document.getElementById('btn-fullscreen');
+  const btnDarkMode = document.getElementById('btn-darkmode');
   const imageUploadInput = document.getElementById('image-upload-input');
 
   // Modal & Toast
@@ -55,6 +60,7 @@
     dpr: window.devicePixelRatio || 1,
     width: 0,
     height: 0,
+    darkMode: false,           // Dark board background toggle
     
     // Multi-touch & viewport transform
     activePointers: new Map(),  // Track all active touch/pen points
@@ -305,7 +311,7 @@
     state.currentStroke = {
       type: 'stroke',
       tool: state.tool,
-      color: state.color,
+      color: resolveInkColor(state.color),
       size: strokeSize,
       points: [worldPt]
     };
@@ -467,6 +473,14 @@
   }
 
   // --- Color Selection ---
+  // Resolve the ink color for the current theme: black ink becomes white on a
+  // dark board (and vice-versa) so writing always stays visible.
+  function resolveInkColor(colorHex) {
+    const c = (colorHex || '').toLowerCase();
+    if (c === INK_BLACK) return state.darkMode ? INK_WHITE : INK_BLACK;
+    return colorHex;
+  }
+
   function setColor(colorHex, targetBtn = null) {
     state.color = colorHex;
 
@@ -564,8 +578,8 @@
     exportCanvas.height = canvas.height;
     const expCtx = exportCanvas.getContext('2d');
 
-    // Fill white background
-    expCtx.fillStyle = '#ffffff';
+    // Fill background matching the current board theme
+    expCtx.fillStyle = state.darkMode ? '#1e293b' : '#ffffff';
     expCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
 
     // Composite all whiteboard contents (already includes viewport transform)
@@ -690,6 +704,39 @@
     }
   }
 
+  // --- Dark Board Mode ---
+  function setDarkMode(enabled) {
+    state.darkMode = enabled;
+    document.body.classList.toggle('dark-board', enabled);
+    if (btnDarkMode) {
+      btnDarkMode.classList.toggle('active', enabled);
+      btnDarkMode.setAttribute('aria-pressed', String(enabled));
+      btnDarkMode.title = enabled ? 'Switch to Light Board (D)' : 'Switch to Dark Board (D)';
+    }
+
+    // Re-map black ink across all existing strokes so past writing stays visible
+    const blackToHex = enabled ? INK_WHITE : INK_BLACK;
+    const fromHex = enabled ? INK_BLACK : INK_WHITE;
+    for (let i = 0; i < state.history.length; i++) {
+      const action = state.history[i];
+      if (action.type === 'stroke' && action.tool !== 'eraser' &&
+          (action.color || '').toLowerCase() === fromHex) {
+        action.color = blackToHex;
+      }
+    }
+
+    // Keep the custom color picker in sync with the active ink color
+    if (customColorInput) {
+      customColorInput.value = resolveInkColor(state.color);
+    }
+
+    redrawAll();
+  }
+
+  function toggleDarkMode() {
+    setDarkMode(!state.darkMode);
+  }
+
   // --- Keyboard Shortcuts ---
   function handleKeyDown(e) {
     // Ignore keystrokes when typing into an input
@@ -739,6 +786,8 @@
       openClearModal();
     } else if (key === 'f') {
       toggleFullscreen();
+    } else if (key === 'd') {
+      toggleDarkMode();
     } else if (key === 'escape') {
       closeClearModal();
       hideToast();
@@ -843,6 +892,7 @@
 
     btnDownload.addEventListener('click', downloadBoardAsPNG);
     btnFullscreen.addEventListener('click', toggleFullscreen);
+    if (btnDarkMode) btnDarkMode.addEventListener('click', toggleDarkMode);
 
     // Keyboard shortcuts
     window.addEventListener('keydown', handleKeyDown);

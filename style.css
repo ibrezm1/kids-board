@@ -33,6 +33,38 @@
   --radius-full: 9999px;
 }
 
+/* ==========================================================================
+   Dark Board Theme
+   ========================================================================== */
+body.dark-board {
+  --canvas-bg: #1e293b;
+
+  --toolbar-bg: rgba(30, 41, 59, 0.96);
+  --toolbar-border: #334155;
+  --toolbar-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.3);
+
+  --text-main: #e2e8f0;
+  --text-muted: #94a3b8;
+
+  --btn-hover-bg: #334155;
+  --btn-active-bg: #475569;
+  --btn-border: #475569;
+
+  --accent-color: #60a5fa;
+  --accent-bg: #1e3a5f;
+  --accent-border: #3b82f6;
+
+  --danger-color: #f87171;
+  --danger-bg: #450a0a;
+  --danger-border: #7f1d1d;
+  --danger-hover-bg: #7f1d1d;
+}
+
+/* Show the correct icon per theme */
+#btn-darkmode .icon-sun { display: none; }
+body.dark-board #btn-darkmode .icon-moon { display: none; }
+body.dark-board #btn-darkmode .icon-sun { display: block; }
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -276,6 +308,15 @@ html, body {
   transform: scale(0.9);
 }
 
+/* In dark mode the black ink swatch renders as white so it stays visible */
+body.dark-board .color-btn[data-color="#111827"] {
+  --c: #f8fafc !important;
+}
+
+body.dark-board .color-btn[data-color="#111827"] .swatch {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
 /* Custom Color Picker */
 .color-picker-label {
   position: relative;
@@ -332,7 +373,7 @@ html, body {
 }
 
 .modal-card {
-  background: #ffffff;
+  background: var(--toolbar-bg);
   border-radius: var(--radius-lg);
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.15), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   max-width: 420px;

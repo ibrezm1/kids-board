@@ -38,6 +38,7 @@ Ready to be hosted directly on **GitHub Pages** with **zero build step**, zero d
   - Annotate and write directly over the uploaded images.
 - **📥 Download as PNG**: Save the current board and annotations as a crisp PNG snapshot (`Ctrl+S`).
 - **Zoom Controls**: Floating zoom buttons (bottom-right) with percentage display. Click the percentage to reset to 100%.
+- **Dark Board Mode**: Toggle a dark background for low-light rooms or projector contrast (`D`). The PNG export automatically uses the matching background color.
 - **High-DPI Retina Ready**: Scaled with `devicePixelRatio` for razor-sharp rendering on 4K monitors, iPads, and Smart Boards.
 - **Touch & Stylus Friendly**: Full `PointerEvents` support with `touch-action: none` to prevent accidental page scrolls or pull-to-refresh gestures.
 - **Fullscreen Mode**: Maximize drawing real-estate for classroom projectors and screen shares (`F`).
@@ -57,6 +58,7 @@ Ready to be hosted directly on **GitHub Pages** with **zero build step**, zero d
 | `Ctrl + S` / `Cmd + S` | **Download PNG** |
 | `Ctrl + O` / `Cmd + O` | **Upload PNG / Image** |
 | `F` | Toggle **Fullscreen** |
+| `D` | Toggle **Dark Board** mode |
 | `Esc` | Cancel modal / Dismiss alert |
 | `Enter` | Confirm modal |
 
