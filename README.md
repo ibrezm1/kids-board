@@ -10,6 +10,10 @@ Ready to be hosted directly on **GitHub Pages** with **zero build step**, zero d
 
 - **Instant Drawing**: Open the page and immediately start writing or sketching — no login, no menus, no lag.
 - **Smooth Freehand Pen**: Uses midpoint quadratic curve smoothing for fluid, natural handwriting on mice, trackpads, and styluses.
+- **Multi-Touch Support**: 
+  - **One finger/stylus**: Draw naturally
+  - **Two fingers**: Pan and zoom the canvas (pinch-to-zoom with auto-centering)
+  - **Palm rejection**: Automatically ignores extra touches while drawing
 - **Quick Colors (One-Click)**: Instant access to high-contrast teaching colors:
   - **Black** (`#111827`)
   - **Red** (`#dc2626`)
@@ -19,20 +23,21 @@ Ready to be hosted directly on **GitHub Pages** with **zero build step**, zero d
   - **Purple** (`#9333ea`)
   - 🎨 **Custom Color Picker** for any custom shade.
   - *Teacher Workflow:* Clicking any color instantly switches back to the Pen tool so you never lose teaching momentum.
-- **Eraser Tool**: Cleanly erase individual strokes with proportional sizing.
+- **Eraser Tool**: Retro-style rectangular duster that erases in wide strokes, just like a traditional classroom board eraser.
 - **Quick Erase Last (Undo)**: Supports multiple undo operations (`Ctrl+Z` / `Cmd+Z`) and redo (`Ctrl+Y`).
 - **Erase All (Clear Board)**:
   - Distinct danger styling to prevent accidental clicks.
   - Confirmation modal safeguards your board notes against accidental wipes.
   - 5-second recovery toast with an **Undo** button in case of accidental clears.
 - **3 Preset Brush Sizes**:
-  - `Thin` (diagram details and fine notes)
-  - `Medium` (default, comfortable lecture writing)
-  - `Thick` (headings and emphasis)
+  - `Thin` (diagram details and fine notes, small duster)
+  - `Medium` (default, comfortable lecture writing, medium duster)
+  - `Thick` (headings and emphasis, large duster)
 - **📤 Upload PNG / Image Capability**:
   - Upload diagrams, equations, assignments, or screenshots directly onto the whiteboard via button (`Ctrl+O`) or **drag & drop**.
   - Annotate and write directly over the uploaded images.
 - **📥 Download as PNG**: Save the current board and annotations as a crisp PNG snapshot (`Ctrl+S`).
+- **Zoom Controls**: Floating zoom buttons (bottom-right) with percentage display. Click the percentage to reset to 100%.
 - **High-DPI Retina Ready**: Scaled with `devicePixelRatio` for razor-sharp rendering on 4K monitors, iPads, and Smart Boards.
 - **Touch & Stylus Friendly**: Full `PointerEvents` support with `touch-action: none` to prevent accidental page scrolls or pull-to-refresh gestures.
 - **Fullscreen Mode**: Maximize drawing real-estate for classroom projectors and screen shares (`F`).

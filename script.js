@@ -9,9 +9,9 @@
 
   // --- Configuration & Constants ---
   const BRUSH_SIZES = {
-    thin: { pen: 3, eraser: 18 },
-    medium: { pen: 7, eraser: 36 },
-    thick: { pen: 14, eraser: 68 }
+    thin: { pen: 3, eraser: 40 },
+    medium: { pen: 7, eraser: 80 },
+    thick: { pen: 14, eraser: 140 }
   };
 
   // --- DOM Elements ---
@@ -19,6 +19,7 @@
   const ctx = canvas.getContext('2d');
   const canvasContainer = document.getElementById('canvas-container');
   const dropOverlay = document.getElementById('drop-overlay');
+  const eraserCursor = document.getElementById('eraser-cursor');
 
   // Toolbar & Buttons
   const toolPen = document.getElementById('tool-pen');
@@ -53,7 +54,16 @@
     clearedBackup: null,     // Recovery buffer for Erase All
     dpr: window.devicePixelRatio || 1,
     width: 0,
-    height: 0
+    height: 0,
+    
+    // Multi-touch & viewport transform
+    activePointers: new Map(),  // Track all active touch/pen points
+    gestureState: null,         // Current gesture (pan/pinch)
+    viewport: {
+      scale: 1,
+      offsetX: 0,
+      offsetY: 0
+    }
   };
 
   // --- High DPI Canvas Resizing ---
@@ -96,32 +106,54 @@
     ctx.save();
     configureContext(stroke);
 
-    if (pts.length === 1) {
-      // Single click / dot
-      ctx.beginPath();
-      ctx.arc(pts[0].x, pts[0].y, stroke.size / 2, 0, Math.PI * 2);
-      ctx.fillStyle = ctx.strokeStyle;
-      ctx.fill();
-      ctx.restore();
-      return;
-    }
-
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-
-    if (pts.length === 2) {
-      ctx.lineTo(pts[1].x, pts[1].y);
-    } else {
-      // Smooth midpoint quadratic curves for fluid handwriting
-      for (let i = 1; i < pts.length - 1; i++) {
-        const midX = (pts[i].x + pts[i + 1].x) / 2;
-        const midY = (pts[i].y + pts[i + 1].y) / 2;
-        ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+    if (stroke.tool === 'eraser') {
+      // Rectangular duster eraser
+      const halfWidth = stroke.size / 2;
+      const halfHeight = stroke.size / 3;
+      
+      if (pts.length === 1) {
+        // Single click - erase rectangle
+        ctx.fillStyle = 'rgba(0,0,0,1)';
+        ctx.fillRect(pts[0].x - halfWidth, pts[0].y - halfHeight, stroke.size, stroke.size * 0.66);
+        ctx.restore();
+        return;
       }
-      ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
-    }
 
-    ctx.stroke();
+      // For eraser, we need to erase rectangles along the path
+      for (let i = 0; i < pts.length; i++) {
+        ctx.fillStyle = 'rgba(0,0,0,1)';
+        ctx.fillRect(pts[i].x - halfWidth, pts[i].y - halfHeight, stroke.size, stroke.size * 0.66);
+      }
+    } else {
+      // Pen drawing (original logic)
+      if (pts.length === 1) {
+        // Single click / dot
+        ctx.beginPath();
+        ctx.arc(pts[0].x, pts[0].y, stroke.size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+
+      if (pts.length === 2) {
+        ctx.lineTo(pts[1].x, pts[1].y);
+      } else {
+        // Smooth midpoint quadratic curves for fluid handwriting
+        for (let i = 1; i < pts.length - 1; i++) {
+          const midX = (pts[i].x + pts[i + 1].x) / 2;
+          const midY = (pts[i].y + pts[i + 1].y) / 2;
+          ctx.quadraticCurveTo(pts[i].x, pts[i].y, midX, midY);
+        }
+        ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+      }
+
+      ctx.stroke();
+    }
+    
     ctx.restore();
   }
 
@@ -136,6 +168,10 @@
     ctx.save();
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.scale(state.dpr, state.dpr);
+    
+    // Apply viewport transform
+    ctx.translate(state.viewport.offsetX, state.viewport.offsetY);
+    ctx.scale(state.viewport.scale, state.viewport.scale);
 
     // Draw all actions from history
     for (let i = 0; i < state.history.length; i++) {
@@ -158,17 +194,110 @@
       y: e.clientY - rect.top
     };
   }
+  
+  function screenToWorld(screenX, screenY) {
+    return {
+      x: (screenX - state.viewport.offsetX) / state.viewport.scale,
+      y: (screenY - state.viewport.offsetY) / state.viewport.scale
+    };
+  }
+  
+  function getGestureCenter() {
+    const pts = Array.from(state.activePointers.values());
+    if (pts.length < 2) return null;
+    
+    const x = (pts[0].x + pts[1].x) / 2;
+    const y = (pts[0].y + pts[1].y) / 2;
+    return { x, y };
+  }
+  
+  function getGestureDistance() {
+    const pts = Array.from(state.activePointers.values());
+    if (pts.length < 2) return 0;
+    
+    const dx = pts[1].x - pts[0].x;
+    const dy = pts[1].y - pts[0].y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+  
+  function startGesture() {
+    if (state.activePointers.size !== 2) return;
+    
+    // Cancel any in-progress stroke
+    if (state.isDrawing) {
+      state.isDrawing = false;
+      if (state.currentStroke && state.currentStroke.points.length > 0) {
+        state.history.push(state.currentStroke);
+        state.redoStack = [];
+      }
+      state.currentStroke = null;
+    }
+    
+    const center = getGestureCenter();
+    const distance = getGestureDistance();
+    
+    state.gestureState = {
+      centerX: center.x,
+      centerY: center.y,
+      distance: distance,
+      startScale: state.viewport.scale,
+      startOffsetX: state.viewport.offsetX,
+      startOffsetY: state.viewport.offsetY
+    };
+  }
+  
+  function updateGesture() {
+    if (!state.gestureState || state.activePointers.size < 2) return;
+    
+    const center = getGestureCenter();
+    const distance = getGestureDistance();
+    
+    if (!center || distance === 0) return;
+    
+    // Calculate scale change
+    const scaleRatio = distance / state.gestureState.distance;
+    const newScale = Math.max(0.2, Math.min(10, state.gestureState.startScale * scaleRatio));
+    
+    // Zoom towards gesture center
+    const worldX = (state.gestureState.centerX - state.gestureState.startOffsetX) / state.gestureState.startScale;
+    const worldY = (state.gestureState.centerY - state.gestureState.startOffsetY) / state.gestureState.startScale;
+    
+    state.viewport.scale = newScale;
+    state.viewport.offsetX = center.x - worldX * newScale;
+    state.viewport.offsetY = center.y - worldY * newScale;
+    
+    // Update zoom indicator
+    updateZoomIndicator();
+    
+    redrawAll();
+  }
+  
+  function endGesture() {
+    state.gestureState = null;
+  }
 
   function onPointerDown(e) {
     // Only primary button (left mouse button, touch, or stylus tip)
     if (e.button !== 0 && e.pointerType === 'mouse') return;
+    
+    const pt = getPointerPos(e);
+    state.activePointers.set(e.pointerId, pt);
+    
+    // If we now have 2 pointers, start gesture mode
+    if (state.activePointers.size === 2) {
+      startGesture();
+      return;
+    }
+    
+    // Only start drawing if this is the first pointer (palm rejection)
+    if (state.activePointers.size > 1) return;
 
     try {
       canvas.setPointerCapture(e.pointerId);
     } catch (_) {}
 
     state.isDrawing = true;
-    const pt = getPointerPos(e);
+    const worldPt = screenToWorld(pt.x, pt.y);
     const strokeSize = state.tool === 'eraser' 
       ? BRUSH_SIZES[state.sizeName].eraser 
       : BRUSH_SIZES[state.sizeName].pen;
@@ -178,30 +307,67 @@
       tool: state.tool,
       color: state.color,
       size: strokeSize,
-      points: [pt]
+      points: [worldPt]
     };
+
+    // Show eraser cursor if erasing
+    if (state.tool === 'eraser') {
+      moveEraserCursor(e.clientX, e.clientY);
+    }
 
     // Draw initial contact dot immediately
     ctx.save();
     ctx.scale(state.dpr, state.dpr);
+    ctx.translate(state.viewport.offsetX, state.viewport.offsetY);
+    ctx.scale(state.viewport.scale, state.viewport.scale);
     drawStroke(state.currentStroke);
     ctx.restore();
   }
 
   function onPointerMove(e) {
+    const pt = getPointerPos(e);
+    
+    // Update pointer position
+    if (state.activePointers.has(e.pointerId)) {
+      state.activePointers.set(e.pointerId, pt);
+    }
+    
+    // Move eraser cursor with pointer
+    if (state.tool === 'eraser' && state.activePointers.size === 1) {
+      moveEraserCursor(e.clientX, e.clientY);
+    }
+    
+    // Handle gesture if active
+    if (state.gestureState && state.activePointers.size >= 2) {
+      updateGesture();
+      return;
+    }
+    
+    // Otherwise handle drawing
     if (!state.isDrawing || !state.currentStroke) return;
 
-    const pt = getPointerPos(e);
-    state.currentStroke.points.push(pt);
+    const worldPt = screenToWorld(pt.x, pt.y);
+    state.currentStroke.points.push(worldPt);
 
-    // Real-time incremental curve smoothing
+    // Real-time incremental rendering
     const pts = state.currentStroke.points;
     const len = pts.length;
-    if (len >= 3) {
-      ctx.save();
-      ctx.scale(state.dpr, state.dpr);
-      configureContext(state.currentStroke);
-
+    
+    ctx.save();
+    ctx.scale(state.dpr, state.dpr);
+    ctx.translate(state.viewport.offsetX, state.viewport.offsetY);
+    ctx.scale(state.viewport.scale, state.viewport.scale);
+    configureContext(state.currentStroke);
+    
+    if (state.currentStroke.tool === 'eraser') {
+      // Draw rectangle for eraser
+      const p = pts[len - 1];
+      const halfWidth = state.currentStroke.size / 2;
+      const halfHeight = state.currentStroke.size / 3;
+      ctx.fillStyle = 'rgba(0,0,0,1)';
+      ctx.fillRect(p.x - halfWidth, p.y - halfHeight, state.currentStroke.size, state.currentStroke.size * 0.66);
+    } else if (len >= 3) {
+      // Smooth curve for pen
       const p0 = pts[len - 3];
       const p1 = pts[len - 2];
       const p2 = pts[len - 1];
@@ -215,11 +381,19 @@
       ctx.moveTo(mid1X, mid1Y);
       ctx.quadraticCurveTo(p1.x, p1.y, mid2X, mid2Y);
       ctx.stroke();
-      ctx.restore();
     }
+    
+    ctx.restore();
   }
 
   function onPointerUp(e) {
+    state.activePointers.delete(e.pointerId);
+    
+    // If we were in gesture mode and drop below 2 pointers, end gesture
+    if (state.gestureState && state.activePointers.size < 2) {
+      endGesture();
+    }
+
     if (!state.isDrawing) return;
     state.isDrawing = false;
 
@@ -240,7 +414,42 @@
     state.tool = toolName;
     toolPen.classList.toggle('active', toolName === 'pen');
     toolEraser.classList.toggle('active', toolName === 'eraser');
-    canvas.style.cursor = toolName === 'eraser' ? 'cell' : 'crosshair';
+    
+    if (toolName === 'eraser') {
+      canvas.style.cursor = 'none';
+      updateEraserCursor();
+    } else {
+      canvas.style.cursor = 'crosshair';
+      hideEraserCursor();
+    }
+  }
+  
+  function updateEraserCursor() {
+    if (!eraserCursor) return;
+    
+    const size = BRUSH_SIZES[state.sizeName].eraser;
+    const width = size;
+    const height = size * 0.66;
+    
+    eraserCursor.style.width = width + 'px';
+    eraserCursor.style.height = height + 'px';
+    eraserCursor.classList.add('visible');
+  }
+  
+  function hideEraserCursor() {
+    if (!eraserCursor) return;
+    eraserCursor.classList.remove('visible');
+  }
+  
+  function moveEraserCursor(clientX, clientY) {
+    if (!eraserCursor || state.tool !== 'eraser') return;
+    
+    const size = BRUSH_SIZES[state.sizeName].eraser;
+    const width = size;
+    const height = size * 0.66;
+    
+    eraserCursor.style.left = (clientX - width / 2) + 'px';
+    eraserCursor.style.top = (clientY - height / 2) + 'px';
   }
 
   // --- Size Switching (Thin / Medium / Thick) ---
@@ -250,6 +459,11 @@
     sizeButtons.forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.size === sizeName);
     });
+    
+    // Update cursor if eraser is active
+    if (state.tool === 'eraser') {
+      setTool('eraser');
+    }
   }
 
   // --- Color Selection ---
@@ -354,7 +568,7 @@
     expCtx.fillStyle = '#ffffff';
     expCtx.fillRect(0, 0, exportCanvas.width, exportCanvas.height);
 
-    // Composite all whiteboard contents
+    // Composite all whiteboard contents (already includes viewport transform)
     expCtx.drawImage(canvas, 0, 0);
 
     // Generate filename with timestamp
@@ -398,9 +612,12 @@
           h = h * ratio;
         }
 
-        // Center on screen
-        const x = (state.width - w) / 2;
-        const y = (state.height - h) / 2;
+        // Center on screen in world coordinates
+        const worldCenterX = (state.width / 2 - state.viewport.offsetX) / state.viewport.scale;
+        const worldCenterY = (state.height / 2 - state.viewport.offsetY) / state.viewport.scale;
+        
+        const x = worldCenterX - w / 2;
+        const y = worldCenterY - h / 2;
 
         const imageAction = {
           type: 'image',
@@ -418,6 +635,48 @@
       img.src = e.target.result;
     };
     reader.readAsDataURL(file);
+  }
+
+  // --- Zoom Controls ---
+  function updateZoomIndicator() {
+    const zoomValue = document.getElementById('zoom-value');
+    if (zoomValue) {
+      zoomValue.textContent = Math.round(state.viewport.scale * 100) + '%';
+    }
+  }
+  
+  function setZoom(newScale, centerX, centerY) {
+    newScale = Math.max(0.2, Math.min(10, newScale));
+    
+    if (centerX === undefined) centerX = state.width / 2;
+    if (centerY === undefined) centerY = state.height / 2;
+    
+    // Zoom towards center point
+    const worldX = (centerX - state.viewport.offsetX) / state.viewport.scale;
+    const worldY = (centerY - state.viewport.offsetY) / state.viewport.scale;
+    
+    state.viewport.scale = newScale;
+    state.viewport.offsetX = centerX - worldX * newScale;
+    state.viewport.offsetY = centerY - worldY * newScale;
+    
+    updateZoomIndicator();
+    redrawAll();
+  }
+  
+  function zoomIn() {
+    setZoom(state.viewport.scale * 1.2);
+  }
+  
+  function zoomOut() {
+    setZoom(state.viewport.scale / 1.2);
+  }
+  
+  function resetView() {
+    state.viewport.scale = 1;
+    state.viewport.offsetX = 0;
+    state.viewport.offsetY = 0;
+    updateZoomIndicator();
+    redrawAll();
   }
 
   // --- Fullscreen Toggle ---
@@ -533,6 +792,15 @@
     canvas.addEventListener('pointermove', onPointerMove);
     canvas.addEventListener('pointerup', onPointerUp);
     canvas.addEventListener('pointercancel', onPointerUp);
+    
+    // Zoom controls
+    const zoomInBtn = document.getElementById('zoom-in');
+    const zoomOutBtn = document.getElementById('zoom-out');
+    const zoomResetBtn = document.getElementById('zoom-reset');
+    
+    if (zoomInBtn) zoomInBtn.addEventListener('click', zoomIn);
+    if (zoomOutBtn) zoomOutBtn.addEventListener('click', zoomOut);
+    if (zoomResetBtn) zoomResetBtn.addEventListener('click', resetView);
 
     // Tool buttons
     toolPen.addEventListener('click', () => setTool('pen'));
@@ -594,6 +862,7 @@
     setTool('pen');
     setSize('medium');
     setColor('#111827', colorButtons[0]);
+    updateZoomIndicator();
   }
 
   if (document.readyState === 'loading') {
